@@ -1,6 +1,7 @@
 import Fastify from "fastify";
 import auth from "./plugin/auth.js";
 import { prisma } from "../prisma/prisma.js";
+import bcrypt from "bcrypt";
 
 const app = Fastify();
 const port = 3000;
@@ -16,8 +17,10 @@ app.post("/register", async (request, reply) => {
     return reply.status(400).send({ message: "User already exists" });
   }
 
+  const hashPassword = await bcrypt.hash(password, 10);
+
   const user = await prisma.user.create({
-    data: { email, password },
+    data: { email, password: hashPassword },
   });
   return user;
 });
@@ -33,13 +36,17 @@ app.post("/login", async (request, reply) => {
 
   const user = await prisma.user.findUnique({ where: { email } });
 
-  if (user && user.password === password) {
-    const token = app.jwt.sign({ id: user.id, email: user.email });
+  if (user) {
+    const isPasswordMatch = await bcrypt.compare(password, user.password);
 
-    return {
-      message: "Login successful",
-      token,
-    };
+    if (isPasswordMatch) {
+      const token = app.jwt.sign({ id: user.id, email: user.email });
+
+      return {
+        message: "Login successful",
+        token,
+      };
+    }
   }
 
   return reply.status(401).send({
